@@ -29,8 +29,10 @@ var host = Host.CreateDefaultBuilder(args)
             opts.UseSqlServer(connectionString));
 
         // Repositories
-        services.AddScoped<IPriceRepository, PriceRepository>();
-        services.AddScoped<IAnalysisRepository, AnalysisRepository>();
+        services.AddScoped<IPriceRepository>(sp => 
+            new PriceRepository(sp.GetRequiredService<GoldAiDbContext>()));
+        services.AddScoped<IAnalysisRepository>(sp =>
+            new AnalysisRepository(sp.GetRequiredService<GoldAiDbContext>()));
 
         // Price scraping
         services.AddHttpClient<IPriceScraperService, TalaIrPriceScraper>();

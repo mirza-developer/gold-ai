@@ -8,22 +8,22 @@ namespace GoldAI.Data.Repositories;
 /// <inheritdoc />
 public class AnalysisRepository : IAnalysisRepository
 {
-    private readonly GoldAiDbContext _db;
+    private readonly DbContext _db;
     private static readonly JsonSerializerOptions _jsonOptions =
         new() { WriteIndented = false };
 
-    public AnalysisRepository(GoldAiDbContext db) => _db = db;
+    public AnalysisRepository(DbContext db) => _db = db;
 
     public async Task SaveAsync(DailyAnalysisResult result, CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(result, _jsonOptions);
 
-        var existing = await _db.AnalysisResults
+        var existing = await _db.Set<AnalysisResultEntity>()
             .FirstOrDefaultAsync(r => r.Date == result.Date.Date, ct);
 
         if (existing is null)
         {
-            _db.AnalysisResults.Add(new AnalysisResultEntity
+            _db.Set<AnalysisResultEntity>().Add(new AnalysisResultEntity
             {
                 Date = result.Date.Date,
                 ResultJson = json
@@ -39,7 +39,7 @@ public class AnalysisRepository : IAnalysisRepository
 
     public async Task<DailyAnalysisResult?> GetLatestAsync(CancellationToken ct = default)
     {
-        var entity = await _db.AnalysisResults
+        var entity = await _db.Set<AnalysisResultEntity>()
             .OrderByDescending(r => r.Date)
             .FirstOrDefaultAsync(ct);
 
@@ -51,7 +51,7 @@ public class AnalysisRepository : IAnalysisRepository
     public async Task<IReadOnlyList<DailyAnalysisResult>> GetRangeAsync(
         DateTime from, DateTime to, CancellationToken ct = default)
     {
-        var entities = await _db.AnalysisResults
+        var entities = await _db.Set<AnalysisResultEntity>()
             .Where(r => r.Date >= from.Date && r.Date <= to.Date)
             .OrderBy(r => r.Date)
             .ToListAsync(ct);
