@@ -1,0 +1,36 @@
+using GoldAI.Domain.Interfaces;
+using GoldAI.Domain.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace GoldAI.Data.Repositories;
+
+/// <inheritdoc />
+public class PriceRepository : IPriceRepository
+{
+    private readonly GoldAiDbContext _db;
+
+    public PriceRepository(GoldAiDbContext db) => _db = db;
+
+    public async Task<IReadOnlyList<AssetPrice>> GetAllAsync(
+        AssetType asset, CancellationToken ct = default) =>
+        await _db.AssetPrices
+            .Where(p => p.Asset == asset)
+            .OrderBy(p => p.Date)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<AssetPrice>> GetRangeAsync(
+        AssetType asset, DateTime from, DateTime to, CancellationToken ct = default) =>
+        await _db.AssetPrices
+            .Where(p => p.Asset == asset && p.Date >= from && p.Date <= to)
+            .OrderBy(p => p.Date)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<AssetPrice>> GetLatestAsync(
+        AssetType asset, int count, CancellationToken ct = default) =>
+        await _db.AssetPrices
+            .Where(p => p.Asset == asset)
+            .OrderByDescending(p => p.Date)
+            .Take(count)
+            .OrderBy(p => p.Date)
+            .ToListAsync(ct);
+}

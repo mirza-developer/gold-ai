@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GoldAI.Analysis/GoldAI.Analysis.csproj" />
+    <Project Path="src/GoldAI.App/GoldAI.App.csproj" />
+    <Project Path="src/GoldAI.Data/GoldAI.Data.csproj" />
+    <Project Path="src/GoldAI.Domain/GoldAI.Domain.csproj" />
+    <Project Path="src/GoldAI.Features/GoldAI.Features.csproj" />
+    <Project Path="src/GoldAI.ML/GoldAI.ML.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GoldAI.Tests/GoldAI.Tests.csproj" />
+  </Folder>
+</Solution>
