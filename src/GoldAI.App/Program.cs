@@ -32,6 +32,9 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddScoped<IPriceRepository, PriceRepository>();
         services.AddScoped<IAnalysisRepository, AnalysisRepository>();
 
+        // Price scraping
+        services.AddHttpClient<IPriceScraperService, TalaIrPriceScraper>();
+
         // Feature engineering
         services.AddSingleton<IFeatureCalculator, FeatureCalculator>();
 

@@ -17,4 +17,7 @@ public interface IPriceRepository
     /// <summary>Returns the most recent N price records for the specified asset.</summary>
     Task<IReadOnlyList<AssetPrice>> GetLatestAsync(
         AssetType asset, int count, CancellationToken ct = default);
+
+    /// <summary>Saves a new asset price record to the database.</summary>
+    Task SaveAsync(AssetPrice price, CancellationToken ct = default);
 }

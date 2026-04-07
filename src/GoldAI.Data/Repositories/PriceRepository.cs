@@ -33,4 +33,10 @@ public class PriceRepository : IPriceRepository
             .Take(count)
             .OrderBy(p => p.Date)
             .ToListAsync(ct);
+
+    public async Task SaveAsync(AssetPrice price, CancellationToken ct = default)
+    {
+        _db.AssetPrices.Add(price);
+        await _db.SaveChangesAsync(ct);
+    }
 }
