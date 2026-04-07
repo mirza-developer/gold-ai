@@ -148,11 +148,12 @@ crontab -e
 
 ## 🌐 Running the Blazor Web Panel
 
-The web application provides an interactive interface for users to:
-- Register and log in
-- View current market analysis
-- Manage their portfolio (Gold grams, Silver grams, USD)
-- Receive personalized buy/sell recommendations
+The web application provides a beautiful, user-friendly interface for users to:
+- **Register and log in** with secure authentication
+- **View real-time dashboard** with current market prices and AI analysis
+- **Manage portfolio** - Add and track Gold (grams), Silver (grams), and USD holdings
+- **See AI recommendations** - Get personalized allocation suggestions based on ML analysis
+- **Monitor risk** - View risk scores and crash/volatility warnings
 
 ### Run the Web App:
 
@@ -163,6 +164,25 @@ dotnet run
 
 Then open your browser to: **https://localhost:5001** (or the URL shown in terminal)
 
+### Web Panel Features:
+
+**🏠 Dashboard:**
+- Live market prices (Gold, Silver, USD in Rials)
+- AI-recommended portfolio allocation with visual progress bars
+- Risk alerts (crash warnings, high volatility alerts)
+- Overall risk score with color coding
+
+**💼 My Portfolio:**
+- Current holdings display with real-time valuation
+- Easy-to-use form to update Gold, Silver, and USD amounts
+- Total portfolio value calculation
+- AI recommendations tailored to your holdings
+
+**🔐 User Management:**
+- Clean, modern login/register pages
+- Secure password requirements
+- Session management with "Remember Me" option
+
 ### Default Features:
 
 - **Home Page**: Latest analysis dashboard
@@ -172,9 +192,11 @@ Then open your browser to: **https://localhost:5001** (or the URL shown in termi
 
 ### User Registration:
 
-1. Navigate to `/Account/Register`
-2. Create an account with email and password
-3. Log in and start managing your portfolio
+1. Navigate to **Register** page (or click Sign Up)
+2. Fill in your name, email, and password (minimum 6 characters, must include uppercase, lowercase, and digit)
+3. Click "Create Account"
+4. You'll be automatically logged in and redirected to the dashboard
+5. Start managing your portfolio by clicking "My Portfolio"
 
 ## 🏗️ Project Structure
 

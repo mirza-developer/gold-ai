@@ -1,7 +1,259 @@
 ﻿@page "/"
+@using GoldAI.Domain.Interfaces
+@using GoldAI.Domain.Models
+@inject IAnalysisRepository AnalysisRepo
+@inject IPriceRepository PriceRepo
 
-<PageTitle>Home</PageTitle>
+<PageTitle>GoldAI - Dashboard</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="dashboard">
+    <div class="header-section">
+        <h1>🏆 GoldAI Dashboard</h1>
+        <p class="subtitle">AI-Powered Portfolio Analysis & Recommendations</p>
+    </div>
 
-Welcome to your new app.
+    @if (isLoading)
+    {
+        <div class="loading-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading analysis data...</p>
+        </div>
+    }
+    else if (latestAnalysis != null)
+    {
+        <!-- Current Prices Card -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">📊 Current Market Prices</h5>
+                <small>Last updated: @latestAnalysis.Date.ToString("dd MMM yyyy")</small>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-4 mb-3">
+                        <div class="price-card gold-price">
+                            <i class="bi bi-coin" style="font-size: 2rem;"></i>
+                            <h6 class="mt-2">Gold</h6>
+                            <h3>@latestAnalysis.GoldPrice.ToString("N0") ﷼</h3>
+                            <small>per gram</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="price-card silver-price">
+                            <i class="bi bi-gem" style="font-size: 2rem;"></i>
+                            <h6 class="mt-2">Silver</h6>
+                            <h3>@latestAnalysis.SilverPrice.ToString("N0") ﷼</h3>
+                            <small>per ounce</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="price-card usd-price">
+                            <i class="bi bi-currency-dollar" style="font-size: 2rem;"></i>
+                            <h6 class="mt-2">USD</h6>
+                            <h3>@latestAnalysis.UsdPrice.ToString("N0") ﷼</h3>
+                            <small>per dollar</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio Recommendation -->
+        @if (latestAnalysis.Allocation != null)
+        {
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">💡 AI Recommended Allocation</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="allocation-item">
+                                <span class="allocation-label">Gold</span>
+                                <div class="progress mb-2" style="height: 30px;">
+                                    <div class="progress-bar bg-warning" role="progressbar" 
+                                         style="width: @((latestAnalysis.Allocation.GoldWeight * 100).ToString("F0"))%"
+                                         aria-valuenow="@(latestAnalysis.Allocation.GoldWeight * 100)" aria-valuemin="0" aria-valuemax="100">
+                                        <strong>@((latestAnalysis.Allocation.GoldWeight * 100).ToString("F0"))%</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="allocation-item">
+                                <span class="allocation-label">Silver</span>
+                                <div class="progress mb-2" style="height: 30px;">
+                                    <div class="progress-bar bg-secondary" role="progressbar" 
+                                         style="width: @((latestAnalysis.Allocation.SilverWeight * 100).ToString("F0"))%"
+                                         aria-valuenow="@(latestAnalysis.Allocation.SilverWeight * 100)" aria-valuemin="0" aria-valuemax="100">
+                                        <strong>@((latestAnalysis.Allocation.SilverWeight * 100).ToString("F0"))%</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="allocation-item">
+                                <span class="allocation-label">USD</span>
+                                <div class="progress mb-2" style="height: 30px;">
+                                    <div class="progress-bar bg-info" role="progressbar" 
+                                         style="width: @((latestAnalysis.Allocation.UsdWeight * 100).ToString("F0"))%"
+                                         aria-valuenow="@(latestAnalysis.Allocation.UsdWeight * 100)" aria-valuemin="0" aria-valuemax="100">
+                                        <strong>@((latestAnalysis.Allocation.UsdWeight * 100).ToString("F0"))%</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Risk Warnings -->
+        @if (latestAnalysis.CrashWarning || latestAnalysis.HighVolatilityWarning)
+        {
+            <div class="alert alert-warning shadow-sm" role="alert">
+                <h5 class="alert-heading">⚠️ Risk Alerts</h5>
+                @if (latestAnalysis.CrashWarning)
+                {
+                    <p><strong>Crash Warning:</strong> High crash probability detected. Consider reducing exposure to risky assets.</p>
+                }
+                @if (latestAnalysis.HighVolatilityWarning)
+                {
+                    <p class="mb-0"><strong>High Volatility:</strong> Market volatility is elevated. Proceed with caution.</p>
+                }
+            </div>
+        }
+
+        <!-- Risk Score -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h5>Overall Risk Score</h5>
+                        <p class="text-muted mb-0">Lower is safer. Target: ~5% max acceptable loss</p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <h2 class="@GetRiskClass(latestAnalysis.OverallRiskScore)">
+                            @latestAnalysis.OverallRiskScore.ToString("F2")
+                        </h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Call to Action -->
+        <div class="text-center my-4">
+            <a href="/portfolio" class="btn btn-primary btn-lg shadow">
+                <i class="bi bi-briefcase"></i> Manage My Portfolio
+            </a>
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info">
+            <h5>Welcome to GoldAI!</h5>
+            <p>No analysis data available yet. The system will generate analysis once price data is collected.</p>
+            <p class="mb-0">Check back soon!</p>
+        </div>
+    }
+</div>
+
+<style>
+    .dashboard {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .header-section {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .header-section h1 {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #333;
+    }
+
+    .subtitle {
+        font-size: 1.1rem;
+        color: #666;
+    }
+
+    .loading-spinner {
+        text-align: center;
+        padding: 4rem;
+    }
+
+    .price-card {
+        padding: 1.5rem;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+
+    .gold-price {
+        background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+        color: #333;
+    }
+
+    .silver-price {
+        background: linear-gradient(135deg, #C0C0C0 0%, #808080 100%);
+        color: #333;
+    }
+
+    .usd-price {
+        background: linear-gradient(135deg, #90EE90 0%, #228B22 100%);
+        color: white;
+    }
+
+    .allocation-item {
+        margin-bottom: 1rem;
+    }
+
+    .allocation-label {
+        font-weight: 600;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+
+    .risk-low {
+        color: green;
+    }
+
+    .risk-medium {
+        color: orange;
+    }
+
+    .risk-high {
+        color: red;
+    }
+</style>
+
+@code {
+    private DailyAnalysisResult? latestAnalysis;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            latestAnalysis = await AnalysisRepo.GetLatestAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading analysis: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetRiskClass(float riskScore)
+    {
+        if (riskScore < 0.15f) return "risk-low";
+        if (riskScore < 0.30f) return "risk-medium";
+        return "risk-high";
+    }
+}
