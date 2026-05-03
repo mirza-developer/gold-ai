@@ -1,6 +1,7 @@
 ﻿@page "/"
 @using GoldAI.Domain.Interfaces
 @using GoldAI.Domain.Models
+@using System.Text.Json
 @inject IAnalysisRepository AnalysisRepo
 @inject IPriceRepository PriceRepo
 
@@ -58,6 +59,23 @@
                 </div>
             </div>
         </div>
+
+        <!-- Prediction Trends Chart -->
+        @if (recentAnalyses.Count > 1)
+        {
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">📈 AI Prediction Trends (Last @recentAnalyses.Count Days)</h5>
+                    <small>Probability that each asset price will rise the next day</small>
+                </div>
+                <div class="card-body">
+                    <input type="hidden" id="predictionChartData" value="@predictionChartJson" />
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="predictionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        }
 
         <!-- Portfolio Recommendation -->
         @if (latestAnalysis.Allocation != null)
@@ -232,6 +250,8 @@
 
 @code {
     private DailyAnalysisResult? latestAnalysis;
+    private List<DailyAnalysisResult> recentAnalyses = new();
+    private string predictionChartJson = "{}";
     private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
@@ -239,6 +259,13 @@
         try
         {
             latestAnalysis = await AnalysisRepo.GetLatestAsync();
+
+            var from = DateTime.UtcNow.Date.AddDays(-30);
+            var to   = DateTime.UtcNow.Date;
+            var range = await AnalysisRepo.GetRangeAsync(from, to);
+            recentAnalyses = range.OrderBy(a => a.Date).ToList();
+
+            predictionChartJson = BuildPredictionChartJson(recentAnalyses);
         }
         catch (Exception ex)
         {
@@ -248,6 +275,17 @@
         {
             isLoading = false;
         }
+    }
+
+    private static string BuildPredictionChartJson(List<DailyAnalysisResult> analyses)
+    {
+        var payload = new
+        {
+            labels  = analyses.Select(a => a.Date.ToString("MMM dd")).ToArray(),
+            goldUp  = analyses.Select(a => (double)(a.GoldPrediction?.UpProbability   ?? 0f)).ToArray(),
+            silverUp= analyses.Select(a => (double)(a.SilverPrediction?.UpProbability ?? 0f)).ToArray(),
+        };
+        return JsonSerializer.Serialize(payload);
     }
 
     private string GetRiskClass(float riskScore)

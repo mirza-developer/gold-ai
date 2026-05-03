@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
+@using System.Text.Json
 @attribute [Authorize]
 @inject GoldAiIdentityDbContext DbContext
 @inject UserManager<ApplicationUser> UserManager
@@ -91,6 +92,42 @@
                 }
             </div>
         </div>
+
+        <!-- Portfolio Share Chart -->
+        @if (userCart != null && latestAnalysis != null && CalculateTotalValue() > 0)
+        {
+            <div class="row mb-4">
+                <div class="col-md-5">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0">🥧 Portfolio Share</h5>
+                            <small>Current value breakdown by asset</small>
+                        </div>
+                        <div class="card-body d-flex align-items-center justify-content-center">
+                            <input type="hidden" id="walletShareChartData" value="@walletShareChartJson" />
+                            <div style="position: relative; height: 280px; width: 100%;">
+                                <canvas id="walletShareChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Wallet Value History Chart -->
+                <div class="col-md-7">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0">📈 Wallet Value History</h5>
+                            <small>Estimated value of current holdings over the last @recentAnalyses.Count days</small>
+                        </div>
+                        <div class="card-body">
+                            <input type="hidden" id="walletHistoryChartData" value="@walletHistoryChartJson" />
+                            <div style="position: relative; height: 260px;">
+                                <canvas id="walletHistoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
 
         <!-- Update Portfolio Form -->
         <div class="card mb-4 shadow-sm">
@@ -254,10 +291,14 @@
 @code {
     private UserCart? userCart;
     private DailyAnalysisResult? latestAnalysis;
+    private List<DailyAnalysisResult> recentAnalyses = new();
     private CartFormModel cartForm = new();
     private bool isLoading = true;
     private bool isSaving = false;
     private string saveMessage = "";
+
+    private string walletShareChartJson   = "{}";
+    private string walletHistoryChartJson = "{}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -273,13 +314,24 @@
 
                 if (userCart != null)
                 {
-                    cartForm.GoldGrams = userCart.GoldGrams;
+                    cartForm.GoldGrams   = userCart.GoldGrams;
                     cartForm.SilverGrams = userCart.SilverGrams;
-                    cartForm.UsdAmount = userCart.UsdAmount;
+                    cartForm.UsdAmount   = userCart.UsdAmount;
                 }
             }
 
             latestAnalysis = await AnalysisRepo.GetLatestAsync();
+
+            var from  = DateTime.UtcNow.Date.AddDays(-30);
+            var to    = DateTime.UtcNow.Date;
+            var range = await AnalysisRepo.GetRangeAsync(from, to);
+            recentAnalyses = range.OrderBy(a => a.Date).ToList();
+
+            if (userCart != null && latestAnalysis != null)
+            {
+                walletShareChartJson   = BuildWalletShareJson(userCart, latestAnalysis);
+                walletHistoryChartJson = BuildWalletHistoryJson(userCart, recentAnalyses);
+            }
         }
         catch (Exception ex)
         {
@@ -293,7 +345,7 @@
 
     private async Task SavePortfolio()
     {
-        isSaving = true;
+        isSaving    = true;
         saveMessage = "";
 
         try
@@ -305,19 +357,23 @@
             {
                 if (userCart == null)
                 {
-                    userCart = new UserCart
-                    {
-                        UserId = user.Id
-                    };
+                    userCart = new UserCart { UserId = user.Id };
                     DbContext.UserCarts.Add(userCart);
                 }
 
-                userCart.GoldGrams = cartForm.GoldGrams;
+                userCart.GoldGrams   = cartForm.GoldGrams;
                 userCart.SilverGrams = cartForm.SilverGrams;
-                userCart.UsdAmount = cartForm.UsdAmount;
+                userCart.UsdAmount   = cartForm.UsdAmount;
                 userCart.LastUpdated = DateTime.UtcNow;
 
                 await DbContext.SaveChangesAsync();
+
+                if (latestAnalysis != null)
+                {
+                    walletShareChartJson   = BuildWalletShareJson(userCart, latestAnalysis);
+                    walletHistoryChartJson = BuildWalletHistoryJson(userCart, recentAnalyses);
+                }
+
                 saveMessage = "✅ Portfolio saved successfully!";
             }
         }
@@ -335,17 +391,46 @@
     {
         if (userCart == null || latestAnalysis == null) return 0;
 
-        decimal goldValue = userCart.GoldGrams * latestAnalysis.GoldPrice;
-        decimal silverValue = userCart.SilverGrams * (latestAnalysis.SilverPrice / 31.1035m); // Convert ounce to gram
-        decimal usdValue = userCart.UsdAmount * latestAnalysis.UsdPrice;
+        decimal goldValue   = userCart.GoldGrams   * latestAnalysis.GoldPrice;
+        decimal silverValue = userCart.SilverGrams * (latestAnalysis.SilverPrice / 31.1035m);
+        decimal usdValue    = userCart.UsdAmount   * latestAnalysis.UsdPrice;
 
         return goldValue + silverValue + usdValue;
     }
 
+    private static string BuildWalletShareJson(UserCart cart, DailyAnalysisResult analysis)
+    {
+        decimal goldValue   = cart.GoldGrams   * analysis.GoldPrice;
+        decimal silverValue = cart.SilverGrams * (analysis.SilverPrice / 31.1035m);
+        decimal usdValue    = cart.UsdAmount   * analysis.UsdPrice;
+
+        var payload = new
+        {
+            labels = new[] { "Gold", "Silver", "USD" },
+            values = new[] { (double)goldValue, (double)silverValue, (double)usdValue }
+        };
+        return JsonSerializer.Serialize(payload);
+    }
+
+    private static string BuildWalletHistoryJson(UserCart cart, List<DailyAnalysisResult> analyses)
+    {
+        var labels = analyses.Select(a => a.Date.ToString("MMM dd")).ToArray();
+        var values = analyses.Select(a =>
+        {
+            double gold   = (double)(cart.GoldGrams   * a.GoldPrice);
+            double silver = (double)(cart.SilverGrams * (a.SilverPrice / 31.1035m));
+            double usd    = (double)(cart.UsdAmount   * a.UsdPrice);
+            return gold + silver + usd;
+        }).ToArray();
+
+        var payload = new { labels, values };
+        return JsonSerializer.Serialize(payload);
+    }
+
     public class CartFormModel
     {
-        public decimal GoldGrams { get; set; }
+        public decimal GoldGrams   { get; set; }
         public decimal SilverGrams { get; set; }
-        public decimal UsdAmount { get; set; }
+        public decimal UsdAmount   { get; set; }
     }
 }
