@@ -11,9 +11,9 @@ namespace GoldAI.App.Services;
 /// <summary>
 /// Fetches daily asset prices from the Nobitex cryptocurrency exchange API.
 /// <list type="bullet">
-///   <item>Silver  → symbol <c>slv-rls</c>  (SLVON/RLS)</item>
-///   <item>Gold    → symbol <c>xaut-rls</c> (XAUT/RLS – Tether Gold)</item>
-///   <item>USD     → symbol <c>usdt-rls</c> (USDT/RLS – Tether)</item>
+///   <item>Silver  → symbol <c>slv-irt</c>  (SLVON/IRT)</item>
+///   <item>Gold    → symbol <c>xaut-irt</c> (XAUT/IRT – Tether Gold)</item>
+///   <item>USD     → symbol <c>usdt-irt</c> (USDT/IRT – Tether)</item>
 /// </list>
 /// API reference: https://apidocs.nobitex.ir/
 /// </summary>
@@ -25,13 +25,13 @@ public class NobitexPriceFetcher : IPriceScraperService
     private const string SrcCurrencies = "slv,xaut,usdt";
 
     // Map from Nobitex symbol key → AssetType
-    // Keys use the "-rls" suffix because the market/stats endpoint prices against
-    // the Rial (rls) destination currency.
+    // Keys use the "-irt" suffix because the market/stats endpoint prices against
+    // the Toman (irt) destination currency (Nobitex migrated from rls to irt).
     private static readonly Dictionary<string, AssetType> SymbolMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["slv-rls"]  = AssetType.Silver,
-        ["xaut-rls"] = AssetType.Gold,
-        ["usdt-rls"] = AssetType.USD,
+        ["slv-irt"]  = AssetType.Silver,
+        ["xaut-irt"] = AssetType.Gold,
+        ["usdt-irt"] = AssetType.USD,
     };
 
     private readonly HttpClient _httpClient;
@@ -67,7 +67,7 @@ public class NobitexPriceFetcher : IPriceScraperService
 
         try
         {
-            var requestPath = $"{MarketStatsPath}?srcCurrency={SrcCurrencies}&dstCurrency=rls";
+            var requestPath = $"{MarketStatsPath}?srcCurrency={SrcCurrencies}&dstCurrency=irt";
             var response = await _httpClient.GetAsync(requestPath, ct);
             response.EnsureSuccessStatusCode();
 
@@ -139,7 +139,7 @@ public class NobitexPriceFetcher : IPriceScraperService
                 Volume = vol,
             });
 
-            _logger.LogInformation("{Asset} ({Symbol}) price: {Price:N0} RLS",
+            _logger.LogInformation("{Asset} ({Symbol}) price: {Price:N0} IRT",
                 assetType, symbol, close.Value);
         }
 
