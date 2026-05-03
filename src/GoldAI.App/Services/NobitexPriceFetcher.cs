@@ -9,26 +9,33 @@ using System.Text.Json;
 namespace GoldAI.App.Services;
 
 /// <summary>
-/// Fetches the USDT/RLS price from the Nobitex cryptocurrency exchange API.
+/// Fetches daily asset prices from the Nobitex cryptocurrency exchange API.
+/// <para>
+/// Nobitex is a crypto exchange and does not trade physical precious metals.
+/// The following mapping is used to supply all three required asset types:
+/// </para>
 /// <list type="bullet">
-///   <item>USD → symbol <c>usdt-rls</c> (USDT/RLS – Tether)</item>
+///   <item>Gold   → symbol <c>btc-rls</c>  (Bitcoin/RLS  – "digital gold")</item>
+///   <item>Silver → symbol <c>eth-rls</c>  (Ethereum/RLS – "digital silver")</item>
+///   <item>USD    → symbol <c>usdt-rls</c> (Tether/RLS)</item>
 /// </list>
-/// Note: Nobitex does not trade precious metals (silver, gold). Use <see cref="TalaIrPriceScraper"/>
-/// for gold and silver prices.
 /// API reference: https://apidocs.nobitex.ir/
 /// </summary>
 public class NobitexPriceFetcher : IPriceScraperService
 {
     private const string MarketStatsPath = "/market/stats";
 
-    // srcCurrency value for the Nobitex API call — only USDT is supported for this app's needs.
-    // Note: Nobitex does not list silver (slv) or Tether Gold (xaut) as tradable assets.
-    private const string SrcCurrencies = "usdt";
+    // srcCurrency values — comma-separated list for a single API call.
+    // Nobitex is a crypto exchange; no physical gold/silver pairs exist.
+    // BTC is the conventional "digital gold" and ETH the "digital silver".
+    private const string SrcCurrencies = "btc,eth,usdt";
 
     // Map from Nobitex symbol key → AssetType
     // Keys use the "-rls" suffix (Rial) as documented in the Nobitex API.
     private static readonly Dictionary<string, AssetType> SymbolMap = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["btc-rls"]  = AssetType.Gold,
+        ["eth-rls"]  = AssetType.Silver,
         ["usdt-rls"] = AssetType.USD,
     };
 
