@@ -1,0 +1,436 @@
+@page "/portfolio"
+@using GoldAI.Domain.Models
+@using GoldAI.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using System.Text.Json
+@attribute [Authorize]
+@inject GoldAiIdentityDbContext DbContext
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IPriceRepository PriceRepo
+@inject IAnalysisRepository AnalysisRepo
+
+<PageTitle>My Portfolio</PageTitle>
+
+<div class="portfolio-container">
+    <h1 class="mb-4">💼 My Portfolio</h1>
+
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Current Holdings -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">📦 Current Holdings</h5>
+            </div>
+            <div class="card-body">
+                @if (userCart != null)
+                {
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="holding-card">
+                                <div class="holding-icon">🥇</div>
+                                <h6>Gold</h6>
+                                <h4>@userCart.GoldGrams.ToString("N2") g</h4>
+                                @if (latestAnalysis != null)
+                                {
+                                    <p class="text-muted mb-0">≈ @((userCart.GoldGrams * latestAnalysis.GoldPrice).ToString("N0")) ﷼</p>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="holding-card">
+                                <div class="holding-icon">🥈</div>
+                                <h6>Silver</h6>
+                                <h4>@userCart.SilverGrams.ToString("N2") g</h4>
+                                @if (latestAnalysis != null)
+                                {
+                                    <p class="text-muted mb-0">≈ @((userCart.SilverGrams * (latestAnalysis.SilverPrice / 31.1035m)).ToString("N0")) ﷼</p>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="holding-card">
+                                <div class="holding-icon">💵</div>
+                                <h6>USD</h6>
+                                <h4>$@userCart.UsdAmount.ToString("N2")</h4>
+                                @if (latestAnalysis != null)
+                                {
+                                    <p class="text-muted mb-0">≈ @((userCart.UsdAmount * latestAnalysis.UsdPrice).ToString("N0")) ﷼</p>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (latestAnalysis != null)
+                    {
+                        <hr />
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Total Portfolio Value</h5>
+                            </div>
+                            <div class="col-md-6 text-end">
+                                <h3 class="text-success">@CalculateTotalValue().ToString("N0") ﷼</h3>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="alert alert-info">
+                        <p class="mb-0">You don't have any holdings yet. Use the form below to add assets to your portfolio.</p>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- Portfolio Share Chart -->
+        @if (userCart != null && latestAnalysis != null && CalculateTotalValue() > 0)
+        {
+            <div class="row mb-4">
+                <div class="col-md-5">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0">🥧 Portfolio Share</h5>
+                            <small>Current value breakdown by asset</small>
+                        </div>
+                        <div class="card-body d-flex align-items-center justify-content-center">
+                            <input type="hidden" id="walletShareChartData" value="@walletShareChartJson" />
+                            <div style="position: relative; height: 280px; width: 100%;">
+                                <canvas id="walletShareChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Wallet Value History Chart -->
+                <div class="col-md-7">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0">📈 Wallet Value History</h5>
+                            <small>Estimated value of current holdings over the last @recentAnalyses.Count days</small>
+                        </div>
+                        <div class="card-body">
+                            <input type="hidden" id="walletHistoryChartData" value="@walletHistoryChartJson" />
+                            <div style="position: relative; height: 260px;">
+                                <canvas id="walletHistoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Update Portfolio Form -->
+        <div class="card mb-4 shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">✏️ Update Portfolio</h5>
+            </div>
+            <div class="card-body">
+                <EditForm Model="@cartForm" OnValidSubmit="@SavePortfolio">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Gold (grams)</label>
+                            <InputNumber @bind-Value="cartForm.GoldGrams" class="form-control" step="0.01" />
+                            <ValidationMessage For="@(() => cartForm.GoldGrams)" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Silver (grams)</label>
+                            <InputNumber @bind-Value="cartForm.SilverGrams" class="form-control" step="0.01" />
+                            <ValidationMessage For="@(() => cartForm.SilverGrams)" />
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">USD ($)</label>
+                            <InputNumber @bind-Value="cartForm.UsdAmount" class="form-control" step="0.01" />
+                            <ValidationMessage For="@(() => cartForm.UsdAmount)" />
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="submit" class="btn btn-success btn-lg" disabled="@isSaving">
+                            @if (isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            }
+                            <i class="bi bi-save"></i> Save Portfolio
+                        </button>
+                    </div>
+                </EditForm>
+
+                @if (!string.IsNullOrEmpty(saveMessage))
+                {
+                    <div class="alert alert-success mt-3">@saveMessage</div>
+                }
+            </div>
+        </div>
+
+        <!-- AI Recommendations -->
+        @if (latestAnalysis?.Allocation != null)
+        {
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">🤖 AI Recommendations</h5>
+                </div>
+                <div class="card-body">
+                    <p class="lead">Based on current market analysis, here's how the AI suggests you should allocate your portfolio:</p>
+                    
+                    <div class="recommendation-grid">
+                        <div class="recommendation-item">
+                            <div class="rec-header">Gold</div>
+                            <div class="rec-percentage">@((latestAnalysis.Allocation.GoldWeight * 100).ToString("F0"))%</div>
+                            <div class="rec-bar">
+                                <div class="rec-fill gold-fill" style="width: @((latestAnalysis.Allocation.GoldWeight * 100).ToString("F0"))%"></div>
+                            </div>
+                        </div>
+                        <div class="recommendation-item">
+                            <div class="rec-header">Silver</div>
+                            <div class="rec-percentage">@((latestAnalysis.Allocation.SilverWeight * 100).ToString("F0"))%</div>
+                            <div class="rec-bar">
+                                <div class="rec-fill silver-fill" style="width: @((latestAnalysis.Allocation.SilverWeight * 100).ToString("F0"))%"></div>
+                            </div>
+                        </div>
+                        <div class="recommendation-item">
+                            <div class="rec-header">USD</div>
+                            <div class="rec-percentage">@((latestAnalysis.Allocation.UsdWeight * 100).ToString("F0"))%</div>
+                            <div class="rec-bar">
+                                <div class="rec-fill usd-fill" style="width: @((latestAnalysis.Allocation.UsdWeight * 100).ToString("F0"))%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (latestAnalysis.CrashWarning)
+                    {
+                        <div class="alert alert-warning mt-3">
+                            <strong>⚠️ Caution:</strong> The AI has detected potential crash risks. Consider a more conservative allocation.
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .portfolio-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .holding-card {
+        text-align: center;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 10px;
+        border: 2px solid #dee2e6;
+    }
+
+    .holding-icon {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .recommendation-grid {
+        display: grid;
+        gap: 1.5rem;
+    }
+
+    .recommendation-item {
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .rec-header {
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .rec-percentage {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+
+    .rec-bar {
+        height: 30px;
+        background: #e9ecef;
+        border-radius: 15px;
+        overflow: hidden;
+    }
+
+    .rec-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+
+    .gold-fill {
+        background: linear-gradient(90deg, #FFD700, #FFA500);
+    }
+
+    .silver-fill {
+        background: linear-gradient(90deg, #C0C0C0, #808080);
+    }
+
+    .usd-fill {
+        background: linear-gradient(90deg, #90EE90, #228B22);
+    }
+</style>
+
+@code {
+    private UserCart? userCart;
+    private DailyAnalysisResult? latestAnalysis;
+    private List<DailyAnalysisResult> recentAnalyses = new();
+    private CartFormModel cartForm = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string saveMessage = "";
+
+    private string walletShareChartJson   = "{}";
+    private string walletHistoryChartJson = "{}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+
+            if (user != null)
+            {
+                userCart = await DbContext.UserCarts
+                    .FirstOrDefaultAsync(c => c.UserId == user.Id);
+
+                if (userCart != null)
+                {
+                    cartForm.GoldGrams   = userCart.GoldGrams;
+                    cartForm.SilverGrams = userCart.SilverGrams;
+                    cartForm.UsdAmount   = userCart.UsdAmount;
+                }
+            }
+
+            latestAnalysis = await AnalysisRepo.GetLatestAsync();
+
+            var from  = DateTime.UtcNow.Date.AddDays(-30);
+            var to    = DateTime.UtcNow.Date;
+            var range = await AnalysisRepo.GetRangeAsync(from, to);
+            recentAnalyses = range.OrderBy(a => a.Date).ToList();
+
+            if (userCart != null && latestAnalysis != null)
+            {
+                walletShareChartJson   = BuildWalletShareJson(userCart, latestAnalysis);
+                walletHistoryChartJson = BuildWalletHistoryJson(userCart, recentAnalyses);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading portfolio: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SavePortfolio()
+    {
+        isSaving    = true;
+        saveMessage = "";
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+
+            if (user != null)
+            {
+                if (userCart == null)
+                {
+                    userCart = new UserCart { UserId = user.Id };
+                    DbContext.UserCarts.Add(userCart);
+                }
+
+                userCart.GoldGrams   = cartForm.GoldGrams;
+                userCart.SilverGrams = cartForm.SilverGrams;
+                userCart.UsdAmount   = cartForm.UsdAmount;
+                userCart.LastUpdated = DateTime.UtcNow;
+
+                await DbContext.SaveChangesAsync();
+
+                if (latestAnalysis != null)
+                {
+                    walletShareChartJson   = BuildWalletShareJson(userCart, latestAnalysis);
+                    walletHistoryChartJson = BuildWalletHistoryJson(userCart, recentAnalyses);
+                }
+
+                saveMessage = "✅ Portfolio saved successfully!";
+            }
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"❌ Error saving portfolio: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private decimal CalculateTotalValue()
+    {
+        if (userCart == null || latestAnalysis == null) return 0;
+
+        decimal goldValue   = userCart.GoldGrams   * latestAnalysis.GoldPrice;
+        decimal silverValue = userCart.SilverGrams * (latestAnalysis.SilverPrice / 31.1035m);
+        decimal usdValue    = userCart.UsdAmount   * latestAnalysis.UsdPrice;
+
+        return goldValue + silverValue + usdValue;
+    }
+
+    private static string BuildWalletShareJson(UserCart cart, DailyAnalysisResult analysis)
+    {
+        decimal goldValue   = cart.GoldGrams   * analysis.GoldPrice;
+        decimal silverValue = cart.SilverGrams * (analysis.SilverPrice / 31.1035m);
+        decimal usdValue    = cart.UsdAmount   * analysis.UsdPrice;
+
+        var payload = new
+        {
+            labels = new[] { "Gold", "Silver", "USD" },
+            values = new[] { (double)goldValue, (double)silverValue, (double)usdValue }
+        };
+        return JsonSerializer.Serialize(payload);
+    }
+
+    private static string BuildWalletHistoryJson(UserCart cart, List<DailyAnalysisResult> analyses)
+    {
+        var labels = analyses.Select(a => a.Date.ToString("MMM dd")).ToArray();
+        var values = analyses.Select(a =>
+        {
+            double gold   = (double)(cart.GoldGrams   * a.GoldPrice);
+            double silver = (double)(cart.SilverGrams * (a.SilverPrice / 31.1035m));
+            double usd    = (double)(cart.UsdAmount   * a.UsdPrice);
+            return gold + silver + usd;
+        }).ToArray();
+
+        var payload = new { labels, values };
+        return JsonSerializer.Serialize(payload);
+    }
+
+    public class CartFormModel
+    {
+        public decimal GoldGrams   { get; set; }
+        public decimal SilverGrams { get; set; }
+        public decimal UsdAmount   { get; set; }
+    }
+}

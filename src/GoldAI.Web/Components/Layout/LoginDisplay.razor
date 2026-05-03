@@ -1,0 +1,38 @@
+@using Microsoft.AspNetCore.Identity
+@using GoldAI.Domain.Models
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject SignInManager<ApplicationUser> SignInManager
+
+<AuthorizeView>
+    <Authorized>
+        <div class="user-info">
+            <span class="user-name">👤 @context.User.Identity?.Name</span>
+            <button class="btn btn-sm btn-outline-light ms-2" @onclick="Logout">Logout</button>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <a href="/Account/Login" class="btn btn-sm btn-outline-light me-2">Login</a>
+        <a href="/Account/Register" class="btn btn-sm btn-success">Sign Up</a>
+    </NotAuthorized>
+</AuthorizeView>
+
+<style>
+    .user-info {
+        display: flex;
+        align-items: center;
+    }
+
+    .user-name {
+        color: white;
+        font-weight: 500;
+    }
+</style>
+
+@code {
+    private async Task Logout()
+    {
+        await SignInManager.SignOutAsync();
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+}

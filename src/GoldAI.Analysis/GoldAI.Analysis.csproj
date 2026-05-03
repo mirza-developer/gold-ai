@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\GoldAI.Domain\GoldAI.Domain.csproj" />
+    <ProjectReference Include="..\GoldAI.Features\GoldAI.Features.csproj" />
+    <ProjectReference Include="..\GoldAI.ML\GoldAI.ML.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
