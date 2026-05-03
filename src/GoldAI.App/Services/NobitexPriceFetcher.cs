@@ -11,9 +11,9 @@ namespace GoldAI.App.Services;
 /// <summary>
 /// Fetches daily asset prices from the Nobitex cryptocurrency exchange API.
 /// <list type="bullet">
-///   <item>Silver  → symbol <c>slv-irt</c>  (SLVON/IRT)</item>
-///   <item>Gold    → symbol <c>xaut-irt</c> (XAUT/IRT – Tether Gold)</item>
-///   <item>USD     → symbol <c>usdt-irt</c> (USDT/IRT – Tether)</item>
+///   <item>Silver  → symbol <c>slv-rls</c>  (SLVON/RLS)</item>
+///   <item>Gold    → symbol <c>xaut-rls</c> (XAUT/RLS – Tether Gold)</item>
+///   <item>USD     → symbol <c>usdt-rls</c> (USDT/RLS – Tether)</item>
 /// </list>
 /// API reference: https://apidocs.nobitex.ir/
 /// </summary>
@@ -21,12 +21,17 @@ public class NobitexPriceFetcher : IPriceScraperService
 {
     private const string MarketStatsPath = "/market/stats";
 
+    // srcCurrency values for the single API call (comma-separated is supported)
+    private const string SrcCurrencies = "slv,xaut,usdt";
+
     // Map from Nobitex symbol key → AssetType
+    // Keys use the "-rls" suffix because the market/stats endpoint prices against
+    // the Rial (rls) destination currency.
     private static readonly Dictionary<string, AssetType> SymbolMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["slv-irt"]  = AssetType.Silver,
-        ["xaut-irt"] = AssetType.Gold,
-        ["usdt-irt"] = AssetType.USD,
+        ["slv-rls"]  = AssetType.Silver,
+        ["xaut-rls"] = AssetType.Gold,
+        ["usdt-rls"] = AssetType.USD,
     };
 
     private readonly HttpClient _httpClient;
@@ -62,7 +67,8 @@ public class NobitexPriceFetcher : IPriceScraperService
 
         try
         {
-            var response = await _httpClient.GetAsync(MarketStatsPath, ct);
+            var requestPath = $"{MarketStatsPath}?srcCurrency={SrcCurrencies}&dstCurrency=rls";
+            var response = await _httpClient.GetAsync(requestPath, ct);
             response.EnsureSuccessStatusCode();
 
             var body = await response.Content.ReadAsStringAsync(ct);
@@ -107,7 +113,9 @@ public class NobitexPriceFetcher : IPriceScraperService
                 continue;
             }
 
-            var close = ParseDecimalField(symbolEl, "latest",   symbol) ??
+            // Prefer dayClose (canonical daily close) over latest (live last-trade price)
+            var close = ParseDecimalField(symbolEl, "dayClose", symbol) ??
+                        ParseDecimalField(symbolEl, "latest",   symbol) ??
                         ParseDecimalField(symbolEl, "mark",     symbol);
             var open  = ParseDecimalField(symbolEl, "dayOpen",  symbol) ?? close;
             var high  = ParseDecimalField(symbolEl, "dayHigh",  symbol) ?? close;
@@ -131,7 +139,7 @@ public class NobitexPriceFetcher : IPriceScraperService
                 Volume = vol,
             });
 
-            _logger.LogInformation("{Asset} ({Symbol}) price: {Price:N0} IRT",
+            _logger.LogInformation("{Asset} ({Symbol}) price: {Price:N0} RLS",
                 assetType, symbol, close.Value);
         }
 

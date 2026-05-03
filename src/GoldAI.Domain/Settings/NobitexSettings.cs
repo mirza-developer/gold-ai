@@ -17,5 +17,5 @@ public class NobitexSettings
     /// <summary>
     /// Base URL for the Nobitex REST API.
     /// </summary>
-    public string BaseUrl { get; set; } = "https://api.nobitex.ir";
+    public string BaseUrl { get; set; } = "https://apiv2.nobitex.ir";
 }
