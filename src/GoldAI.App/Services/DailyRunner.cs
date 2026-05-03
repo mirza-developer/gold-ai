@@ -6,34 +6,37 @@ namespace GoldAI.App.Services;
 
 /// <summary>
 /// Orchestrates the daily execution pipeline:
-/// 0. Scrape current prices from external sources and store them.
-/// 1. Load historical price data from the database.
-/// 2. Train / refresh the ML model if necessary.
-/// 3. Run the full analysis.
-/// 4. Persist the analysis result.
-/// 5. Print a summary to the console.
+/// 0. Fetch current prices from Nobitex API and store them.
+/// 1. Evaluate prediction accuracy vs real prices; force retrain if below threshold.
+/// 2. Load historical price data from the database.
+/// 3. Train / refresh the ML model if necessary.
+/// 4. Run the full analysis.
+/// 5. Persist the analysis result.
+/// 6. Print a summary to the console.
 /// </summary>
 public class DailyRunner
 {
-    private readonly IPriceRepository      _priceRepository;
-    private readonly IAnalysisRepository   _analysisRepository;
-    private readonly IModelTrainer         _modelTrainer;
-    private readonly IAnalysisEngine       _analysisEngine;
-    private readonly IModelPredictor       _modelPredictor;
-    private readonly IPriceScraperService? _priceScraper;
-    private readonly ILogger<DailyRunner>  _logger;
+    private readonly IPriceRepository           _priceRepository;
+    private readonly IAnalysisRepository        _analysisRepository;
+    private readonly IModelTrainer              _modelTrainer;
+    private readonly IAnalysisEngine            _analysisEngine;
+    private readonly IModelPredictor            _modelPredictor;
+    private readonly IPriceScraperService?      _priceScraper;
+    private readonly PredictionAccuracyChecker? _accuracyChecker;
+    private readonly ILogger<DailyRunner>       _logger;
 
     // Retrain the model after this many new price records have been added
     private const int RetrainEveryNDays = 7;
 
     public DailyRunner(
-        IPriceRepository     priceRepository,
-        IAnalysisRepository  analysisRepository,
-        IModelTrainer        modelTrainer,
-        IAnalysisEngine      analysisEngine,
-        IModelPredictor      modelPredictor,
-        ILogger<DailyRunner> logger,
-        IPriceScraperService? priceScraper = null)
+        IPriceRepository            priceRepository,
+        IAnalysisRepository         analysisRepository,
+        IModelTrainer               modelTrainer,
+        IAnalysisEngine             analysisEngine,
+        IModelPredictor             modelPredictor,
+        ILogger<DailyRunner>        logger,
+        IPriceScraperService?       priceScraper     = null,
+        PredictionAccuracyChecker?  accuracyChecker  = null)
     {
         _priceRepository    = priceRepository;
         _analysisRepository = analysisRepository;
@@ -41,6 +44,7 @@ public class DailyRunner
         _analysisEngine     = analysisEngine;
         _modelPredictor     = modelPredictor;
         _priceScraper       = priceScraper;
+        _accuracyChecker    = accuracyChecker;
         _logger             = logger;
     }
 
@@ -51,18 +55,18 @@ public class DailyRunner
     {
         _logger.LogInformation("=== GoldAI Daily Runner — {Date} ===", DateTime.UtcNow.Date);
 
-        // ── 0. Scrape and store current prices ────────────────────────────────
+        // ── 0. Fetch and store current prices ─────────────────────────────────
         if (_priceScraper is not null)
         {
-            _logger.LogInformation("Scraping current prices from external source...");
+            _logger.LogInformation("Fetching current prices from Nobitex API...");
             try
             {
-                var scrapedPrices = await _priceScraper.ScrapeCurrentPricesAsync(ct);
-                await SaveScrapedPricesAsync(scrapedPrices, ct);
+                var fetchedPrices = await _priceScraper.ScrapeCurrentPricesAsync(ct);
+                await SaveScrapedPricesAsync(fetchedPrices, ct);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to scrape prices. Continuing with existing data.");
+                _logger.LogError(ex, "Failed to fetch prices. Continuing with existing data.");
             }
         }
 
@@ -85,26 +89,44 @@ public class DailyRunner
             return;
         }
 
-        // ── 2. Train / refresh model ──────────────────────────────────────────
-        bool shouldRetrain = !_modelPredictor.IsModelAvailable()
+        // ── 2. Prediction accuracy check → may force retrain ──────────────────
+        bool accuracyForcedRetrain = false;
+        if (_accuracyChecker is not null)
+        {
+            try
+            {
+                accuracyForcedRetrain = await _accuracyChecker.ShouldForceRetrainAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Prediction accuracy check failed; proceeding normally.");
+            }
+        }
+
+        // ── 3. Train / refresh model ──────────────────────────────────────────
+        bool shouldRetrain = accuracyForcedRetrain
+            || !_modelPredictor.IsModelAvailable()
             || ShouldRetrain(minRecords);
 
         if (shouldRetrain)
         {
-            _logger.LogInformation("Training ML model on {N} records...", minRecords);
+            string reason = accuracyForcedRetrain          ? "low prediction accuracy"
+                          : !_modelPredictor.IsModelAvailable() ? "no saved model"
+                          : "periodic schedule";
+            _logger.LogInformation("Training ML model ({Reason}) on {N} records...", reason, minRecords);
             await _modelTrainer.TrainAsync(goldPrices, silverPrices, usdPrices, ct);
             _logger.LogInformation("Model training complete.");
         }
 
-        // ── 3. Run analysis ───────────────────────────────────────────────────
+        // ── 4. Run analysis ───────────────────────────────────────────────────
         _logger.LogInformation("Running daily analysis...");
         var result = await _analysisEngine.RunAsync(goldPrices, silverPrices, usdPrices, ct);
 
-        // ── 4. Persist result ─────────────────────────────────────────────────
+        // ── 5. Persist result ─────────────────────────────────────────────────
         await _analysisRepository.SaveAsync(result, ct);
         _logger.LogInformation("Analysis result saved.");
 
-        // ── 5. Print summary ──────────────────────────────────────────────────
+        // ── 6. Print summary ──────────────────────────────────────────────────
         PrintSummary(result);
     }
 
@@ -155,28 +177,24 @@ public class DailyRunner
     }
 
     /// <summary>
-    /// Saves scraped prices to the database, avoiding duplicates based on Asset+Date.
+    /// Saves fetched prices to the database, skipping duplicates (same Asset + Date).
     /// </summary>
     private async Task SaveScrapedPricesAsync(
-        IReadOnlyList<AssetPrice> scrapedPrices, 
+        IReadOnlyList<AssetPrice> fetchedPrices,
         CancellationToken ct)
     {
-        using var scope = _logger.BeginScope("SaveScrapedPrices");
-        
-        foreach (var price in scrapedPrices)
+        foreach (var price in fetchedPrices)
         {
             try
             {
-                // Check if a price already exists for this asset and date
                 var existing = await _priceRepository.GetRangeAsync(
                     price.Asset, price.Date, price.Date, ct);
 
                 if (existing.Count == 0)
                 {
-                    // Price doesn't exist, add it
                     await _priceRepository.SaveAsync(price, ct);
                     _logger.LogInformation(
-                        "New price saved: {Asset} on {Date} = {Price:N0} Rials",
+                        "New price saved: {Asset} on {Date} = {Price:N0} IRT",
                         price.Asset, price.Date, price.Close);
                 }
                 else
@@ -188,8 +206,8 @@ public class DailyRunner
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, 
-                    "Failed to save scraped price for {Asset} on {Date}",
+                _logger.LogError(ex,
+                    "Failed to save price for {Asset} on {Date}",
                     price.Asset, price.Date);
             }
         }

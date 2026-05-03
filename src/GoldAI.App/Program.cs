@@ -3,6 +3,7 @@ using GoldAI.App.Services;
 using GoldAI.Data;
 using GoldAI.Data.Repositories;
 using GoldAI.Domain.Interfaces;
+using GoldAI.Domain.Settings;
 using GoldAI.Features;
 using GoldAI.ML;
 using Microsoft.EntityFrameworkCore;
@@ -34,8 +35,13 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddScoped<IAnalysisRepository>(sp =>
             new AnalysisRepository(sp.GetRequiredService<GoldAiDbContext>()));
 
-        // Price scraping
-        services.AddHttpClient<IPriceScraperService, TalaIrPriceScraper>();
+        // Nobitex settings & price fetcher (replaces TalaIrPriceScraper)
+        services.Configure<NobitexSettings>(
+            ctx.Configuration.GetSection(NobitexSettings.SectionName));
+        services.AddHttpClient<IPriceScraperService, NobitexPriceFetcher>();
+
+        // Prediction accuracy self-correction checker
+        services.AddScoped<PredictionAccuracyChecker>();
 
         // Feature engineering
         services.AddSingleton<IFeatureCalculator, FeatureCalculator>();
