@@ -35,10 +35,10 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddScoped<IAnalysisRepository>(sp =>
             new AnalysisRepository(sp.GetRequiredService<GoldAiDbContext>()));
 
-        // Nobitex settings & price fetcher (replaces TalaIrPriceScraper)
-        services.Configure<NobitexSettings>(
-            ctx.Configuration.GetSection(NobitexSettings.SectionName));
-        services.AddHttpClient<IPriceScraperService, NobitexPriceFetcher>();
+        // Price scraper: TalaIrPriceScraper fetches gold, silver and USD from tala.ir.
+        // Note: NobitexPriceFetcher is available for USD-only Nobitex queries if needed,
+        // but Nobitex does not trade precious metals so it cannot supply gold/silver prices.
+        services.AddHttpClient<IPriceScraperService, TalaIrPriceScraper>();
 
         // Prediction accuracy self-correction checker
         services.AddScoped<PredictionAccuracyChecker>();

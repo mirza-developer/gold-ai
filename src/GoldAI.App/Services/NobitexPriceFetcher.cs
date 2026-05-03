@@ -9,29 +9,27 @@ using System.Text.Json;
 namespace GoldAI.App.Services;
 
 /// <summary>
-/// Fetches daily asset prices from the Nobitex cryptocurrency exchange API.
+/// Fetches the USDT/RLS price from the Nobitex cryptocurrency exchange API.
 /// <list type="bullet">
-///   <item>Silver  → symbol <c>slv-irt</c>  (SLVON/IRT)</item>
-///   <item>Gold    → symbol <c>xaut-irt</c> (XAUT/IRT – Tether Gold)</item>
-///   <item>USD     → symbol <c>usdt-irt</c> (USDT/IRT – Tether)</item>
+///   <item>USD → symbol <c>usdt-rls</c> (USDT/RLS – Tether)</item>
 /// </list>
+/// Note: Nobitex does not trade precious metals (silver, gold). Use <see cref="TalaIrPriceScraper"/>
+/// for gold and silver prices.
 /// API reference: https://apidocs.nobitex.ir/
 /// </summary>
 public class NobitexPriceFetcher : IPriceScraperService
 {
     private const string MarketStatsPath = "/market/stats";
 
-    // srcCurrency values for the single API call (comma-separated is supported)
-    private const string SrcCurrencies = "slv,xaut,usdt";
+    // srcCurrency value for the Nobitex API call — only USDT is supported for this app's needs.
+    // Note: Nobitex does not list silver (slv) or Tether Gold (xaut) as tradable assets.
+    private const string SrcCurrencies = "usdt";
 
     // Map from Nobitex symbol key → AssetType
-    // Keys use the "-irt" suffix because the market/stats endpoint prices against
-    // the Toman (irt) destination currency (Nobitex migrated from rls to irt).
+    // Keys use the "-rls" suffix (Rial) as documented in the Nobitex API.
     private static readonly Dictionary<string, AssetType> SymbolMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["slv-irt"]  = AssetType.Silver,
-        ["xaut-irt"] = AssetType.Gold,
-        ["usdt-irt"] = AssetType.USD,
+        ["usdt-rls"] = AssetType.USD,
     };
 
     private readonly HttpClient _httpClient;
@@ -67,7 +65,7 @@ public class NobitexPriceFetcher : IPriceScraperService
 
         try
         {
-            var requestPath = $"{MarketStatsPath}?srcCurrency={SrcCurrencies}&dstCurrency=irt";
+            var requestPath = $"{MarketStatsPath}?srcCurrency={SrcCurrencies}&dstCurrency=rls";
             var response = await _httpClient.GetAsync(requestPath, ct);
             response.EnsureSuccessStatusCode();
 
@@ -139,7 +137,7 @@ public class NobitexPriceFetcher : IPriceScraperService
                 Volume = vol,
             });
 
-            _logger.LogInformation("{Asset} ({Symbol}) price: {Price:N0} IRT",
+            _logger.LogInformation("{Asset} ({Symbol}) price: {Price:N0} RLS",
                 assetType, symbol, close.Value);
         }
 
